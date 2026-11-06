@@ -1,7 +1,8 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 :root {
-  font-family: "DM Sans", "Segoe UI", sans-serif;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", "Inter", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -9,7 +10,7 @@
   font-optical-sizing: auto;
   font-weight: 400;
   color-scheme: dark;
-  background: #101714;
+  background: #0d1712;
   scroll-behavior: smooth;
 }
 
@@ -36,13 +37,14 @@ input {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible {
-  outline: 2px solid #c5a46d;
-  outline-offset: 3px;
+  outline: 2px solid #e4cfaa;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 5px rgba(35, 134, 83, 0.2);
 }
 
 ::selection {
-  color: #fff8e9;
-  background: #641e32;
+  color: #f7f1e5;
+  background: #672a38;
 }
 
 @media (max-width: 600px) {

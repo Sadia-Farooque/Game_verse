@@ -47,6 +47,166 @@ function Icon({ name, size = 18, className = '' }) {
   )
 }
 
+function IntroLoader() {
+  return (
+    <div aria-label="Loading GameVerse" className="intro-loader" role="status">
+      <span className="intro-loader-mark"><Icon name="controller" size={30} /></span>
+      <span className="intro-loader-wordmark">GAME<span>VERSE</span></span>
+      <span className="intro-loader-track"><i /></span>
+    </div>
+  )
+}
+
+function CursorGlow() {
+  const glowRef = useRef(null)
+  const frameRef = useRef(0)
+
+  useEffect(() => {
+    const glow = glowRef.current
+    const canHover = window.matchMedia('(pointer: fine)').matches
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!glow || !canHover || reduceMotion) return undefined
+
+    function moveGlow(event) {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current)
+      frameRef.current = requestAnimationFrame(() => {
+        glow.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0)`
+      })
+    }
+
+    window.addEventListener('pointermove', moveGlow, { passive: true })
+    return () => {
+      window.removeEventListener('pointermove', moveGlow)
+      cancelAnimationFrame(frameRef.current)
+    }
+  }, [])
+
+  return <div aria-hidden="true" className="cursor-glow" ref={glowRef} />
+}
+
+function ParticleBackground() {
+  const canvasRef = useRef(null)
+  const frameRef = useRef(0)
+  const sizeRef = useRef({ width: 0, height: 0, pixelRatio: 1 })
+  const particlesRef = useRef([])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d')
+    if (!canvas || !context) return undefined
+
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const pointerQuery = window.matchMedia('(pointer: fine)')
+    const pointer = { x: -1000, y: -1000 }
+    function resize() {
+      const bounds = canvas.getBoundingClientRect()
+      sizeRef.current.width = bounds.width
+      sizeRef.current.height = bounds.height
+      sizeRef.current.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5)
+      canvas.width = Math.round(sizeRef.current.width * sizeRef.current.pixelRatio)
+      canvas.height = Math.round(sizeRef.current.height * sizeRef.current.pixelRatio)
+      context.setTransform(sizeRef.current.pixelRatio, 0, 0, sizeRef.current.pixelRatio, 0, 0)
+      const count = sizeRef.current.width < 600 ? 22 : 48
+      particlesRef.current = Array.from({ length: count }, () => ({
+        x: Math.random() * sizeRef.current.width,
+        y: Math.random() * sizeRef.current.height,
+        radius: Math.random() * 1.4 + 0.45,
+        phase: Math.random() * Math.PI * 2,
+        drift: Math.random() * 0.35 + 0.12,
+      }))
+      draw(0, true)
+    }
+
+    function draw(time, stationary = false) {
+      context.clearRect(0, 0, sizeRef.current.width, sizeRef.current.height)
+      particlesRef.current.forEach((particle) => {
+        const shimmer = stationary ? 0.55 : 0.32 + (Math.sin(time * 0.0007 + particle.phase) + 1) * 0.24
+        let x = particle.x
+        let y = particle.y
+        if (pointerQuery.matches && !stationary) {
+          const dx = x - pointer.x
+          const dy = y - pointer.y
+          const distance = Math.hypot(dx, dy)
+          if (distance < 135 && distance > 0) {
+            const force = (135 - distance) / 135
+            x += (dx / distance) * force * 12
+            y += (dy / distance) * force * 12
+          }
+        }
+        context.beginPath()
+        context.arc(x, y, particle.radius, 0, Math.PI * 2)
+        context.fillStyle = `rgba(186, 168, 255, ${shimmer})`
+        context.fill()
+        if (!stationary) particle.y -= particle.drift * 0.12
+        if (particle.y < -2) particle.y = sizeRef.current.height + 2
+      })
+      if (!stationary) frameRef.current = requestAnimationFrame(draw)
+    }
+
+    function onPointerMove(event) {
+      const bounds = canvas.getBoundingClientRect()
+      pointer.x = event.clientX - bounds.left
+      pointer.y = event.clientY - bounds.top
+    }
+
+    resize()
+    if (!motionQuery.matches) frameRef.current = requestAnimationFrame(draw)
+    window.addEventListener('pointermove', onPointerMove, { passive: true })
+    const observer = new ResizeObserver(resize)
+    observer.observe(canvas)
+
+    return () => {
+      cancelAnimationFrame(frameRef.current)
+      observer.disconnect()
+      window.removeEventListener('pointermove', onPointerMove)
+    }
+  }, [])
+
+  return <canvas aria-hidden="true" className="particle-canvas" ref={canvasRef} />
+}
+
+function CountUp({ value }) {
+  const countRef = useRef(null)
+  const frameRef = useRef(0)
+  const [count, setCount] = useState(() => (
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    !('IntersectionObserver' in window)
+      ? value
+      : 0
+  ))
+
+  useEffect(() => {
+    const element = countRef.current
+    if (!element) return undefined
+
+    const motionReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (motionReduced || !('IntersectionObserver' in window)) {
+      return undefined
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return
+      const start = performance.now()
+      const duration = 950
+      function update(now) {
+        const progress = Math.min((now - start) / duration, 1)
+        setCount(Math.round(value * (1 - (1 - progress) ** 3)))
+        if (progress < 1) frameRef.current = requestAnimationFrame(update)
+      }
+      frameRef.current = requestAnimationFrame(update)
+      observer.disconnect()
+    }, { threshold: 0.4 })
+
+    observer.observe(element)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frameRef.current)
+    }
+  }, [value])
+
+  return <span aria-label={String(value)} ref={countRef}>{count}</span>
+}
+
 const games = [
   {
     id: 'neon-racer',
@@ -185,10 +345,20 @@ const imageUrl = (id, width = 900) =>
 
 function App() {
   const searchInputRef = useRef(null)
+  const progressRef = useRef(null)
+  const scrollFrameRef = useRef(0)
   const [query, setQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState('All games')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [lightTheme, setLightTheme] = useState(false)
+  const [hasScrolled, setHasScrolled] = useState(false)
+  const [showIntro, setShowIntro] = useState(() => {
+    try {
+      return !window.sessionStorage.getItem('gameverse-intro-seen')
+    } catch {
+      return false
+    }
+  })
   const [favorites, setFavorites] = useState([])
   const [showFavorites, setShowFavorites] = useState(false)
   const [selectedGame, setSelectedGame] = useState(null)
@@ -248,6 +418,80 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [notice])
 
+  useEffect(() => {
+    if (!showIntro) return undefined
+    try {
+      window.sessionStorage.setItem('gameverse-intro-seen', 'true')
+    } catch (error) {
+      console.warn('GameVerse could not save the intro-loader session flag.', error)
+    }
+    const timeout = window.setTimeout(() => setShowIntro(false), 1050)
+    return () => window.clearTimeout(timeout)
+  }, [showIntro])
+
+  useEffect(() => {
+    function updateScroll() {
+      if (scrollFrameRef.current) return
+      scrollFrameRef.current = requestAnimationFrame(() => {
+        const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight
+        const progress = scrollableHeight > 0 ? window.scrollY / scrollableHeight : 0
+        if (progressRef.current) {
+          progressRef.current.style.transform = `scaleX(${Math.min(1, Math.max(0, progress))})`
+        }
+        const nextScrolled = window.scrollY > 24
+        setHasScrolled((current) => current === nextScrolled ? current : nextScrolled)
+        scrollFrameRef.current = 0
+      })
+    }
+
+    updateScroll()
+    window.addEventListener('scroll', updateScroll, { passive: true })
+    window.addEventListener('resize', updateScroll)
+    return () => {
+      cancelAnimationFrame(scrollFrameRef.current)
+      window.removeEventListener('scroll', updateScroll)
+      window.removeEventListener('resize', updateScroll)
+    }
+  }, [])
+
+  useEffect(() => {
+    function updateIndicator() {
+      const indicator = document.querySelector('.filter-indicator')
+      const selected = document.querySelector('.filter-chip.selected')
+      if (!indicator || !selected) return
+      indicator.style.width = `${selected.offsetWidth}px`
+      indicator.style.transform = `translateX(${selected.offsetLeft}px)`
+    }
+
+    updateIndicator()
+    window.addEventListener('resize', updateIndicator)
+    return () => window.removeEventListener('resize', updateIndicator)
+  }, [activeCategory])
+
+  useEffect(() => {
+    const revealItems = document.querySelectorAll('[data-reveal]:not(.is-revealed)')
+
+    if (!('IntersectionObserver' in window)) {
+      revealItems.forEach((item) => item.classList.add('is-revealed'))
+      return undefined
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-revealed')
+            observer.unobserve(entry.target)
+          }
+        })
+      },
+      { rootMargin: '0px 0px -8% 0px', threshold: 0.08 },
+    )
+
+    revealItems.forEach((item) => observer.observe(item))
+    return () => observer.disconnect()
+  }, [visibleGames])
+
   function chooseCategory(category) {
     setActiveCategory(category)
     setShowFavorites(false)
@@ -284,9 +528,42 @@ function App() {
     setNotice('Account sign-in is a demo interaction for now.')
   }
 
+  function tiltCard(event) {
+    if (event.pointerType === 'touch') return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const x = (event.clientX - bounds.left) / bounds.width
+    const y = (event.clientY - bounds.top) / bounds.height
+    event.currentTarget.style.setProperty('--tilt-x', `${(0.5 - y) * 7}deg`)
+    event.currentTarget.style.setProperty('--tilt-y', `${(x - 0.5) * 7}deg`)
+    event.currentTarget.style.setProperty('--spot-x', `${x * 100}%`)
+    event.currentTarget.style.setProperty('--spot-y', `${y * 100}%`)
+  }
+
+  function resetCardTilt(event) {
+    event.currentTarget.style.setProperty('--tilt-x', '0deg')
+    event.currentTarget.style.setProperty('--tilt-y', '0deg')
+  }
+
+  function moveMagneticButton(event) {
+    if (event.pointerType === 'touch') return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const x = (event.clientX - bounds.left - bounds.width / 2) * 0.12
+    const y = (event.clientY - bounds.top - bounds.height / 2) * 0.12
+    event.currentTarget.style.setProperty('--mag-x', `${x}px`)
+    event.currentTarget.style.setProperty('--mag-y', `${y}px`)
+  }
+
+  function resetMagneticButton(event) {
+    event.currentTarget.style.setProperty('--mag-x', '0px')
+    event.currentTarget.style.setProperty('--mag-y', '0px')
+  }
+
   return (
-    <div className={`site-shell${lightTheme ? ' light-theme' : ''}`}>
-      <header className="site-header">
+    <div className={`site-shell${lightTheme ? ' light-theme' : ''}${showIntro ? ' is-loading' : ''}`}>
+      <div aria-hidden="true" className="scroll-progress" ref={progressRef} />
+      <CursorGlow />
+      {showIntro && <IntroLoader />}
+      <header className={`site-header${hasScrolled ? ' is-scrolled' : ''}`}>
         <div className="header-inner">
           <a
             aria-label="GameVerse home"
@@ -373,16 +650,66 @@ function App() {
         <section aria-labelledby="hero-title" className="hero-section" id="home">
           <div aria-hidden="true" className="hero-orb hero-orb-one" />
           <div aria-hidden="true" className="hero-orb hero-orb-two" />
-          <div className="hero-inner page-width">
-            <div className="hero-copy">
+          <ParticleBackground />
+          <div
+            className="hero-inner page-width"
+            onPointerMove={(event) => {
+              if (event.pointerType === 'touch') return
+              const bounds = event.currentTarget.getBoundingClientRect()
+              const pointerX = (event.clientX - bounds.left) / bounds.width
+              const pointerY = (event.clientY - bounds.top) / bounds.height
+              event.currentTarget.style.setProperty('--pointer-x', `${pointerX * 100}%`)
+              event.currentTarget.style.setProperty('--pointer-y', `${pointerY * 100}%`)
+              const art = event.currentTarget.querySelector('.hero-art')
+              art?.style.setProperty('--parallax-x', `${(pointerX - 0.5) * 12}px`)
+              art?.style.setProperty('--parallax-y', `${(pointerY - 0.5) * 12}px`)
+              event.currentTarget.querySelectorAll('.hero-float').forEach((shape, index) => {
+                const depth = (index + 1) * 5
+                shape.style.setProperty('--float-x', `${(pointerX - 0.5) * depth}px`)
+                shape.style.setProperty('--float-y', `${(pointerY - 0.5) * depth}px`)
+              })
+            }}
+            onPointerLeave={(event) => {
+              const art = event.currentTarget.querySelector('.hero-art')
+              art?.style.setProperty('--parallax-x', '0px')
+              art?.style.setProperty('--parallax-y', '0px')
+              event.currentTarget.querySelectorAll('.hero-float').forEach((shape) => {
+                shape.style.setProperty('--float-x', '0px')
+                shape.style.setProperty('--float-y', '0px')
+              })
+            }}
+          >
+            <div className="hero-copy" data-reveal>
               <div className="eyebrow"><span className="eyebrow-dot" /> YOUR NEXT FAVORITE IS WAITING</div>
-              <h1 id="hero-title">Your next adventure <span>starts here.</span></h1>
+              <h1 id="hero-title">
+                <span className="hero-title-line">
+                  {'Your next adventure'.split(' ').map((word, index) => (
+                    <span className="hero-word" key={word} style={{ '--word-order': index }}>{word}</span>
+                  ))}
+                </span>
+                <span className="hero-title-accent">
+                  {'starts here.'.split(' ').map((word, index) => (
+                    <span className="hero-word" key={word} style={{ '--word-order': index + 3 }}>{word}</span>
+                  ))}
+                </span>
+              </h1>
               <p className="hero-description">
                 Discover hundreds of exciting games, challenge yourself, compete
                 with friends, and enjoy endless entertainment — completely free.
               </p>
               <div className="hero-buttons">
-                <button className="button button-primary button-large" onClick={startExploring} type="button">
+                <button
+                  className="button button-primary button-large magnetic-button"
+                  onClick={startExploring}
+                  onPointerDown={(event) => event.currentTarget.classList.add('is-pressed')}
+                  onPointerLeave={(event) => {
+                    event.currentTarget.classList.remove('is-pressed')
+                    resetMagneticButton(event)
+                  }}
+                  onPointerMove={moveMagneticButton}
+                  onPointerUp={(event) => event.currentTarget.classList.remove('is-pressed')}
+                  type="button"
+                >
                   Explore games <Icon name="arrow" size={18} />
                 </button>
                 <button className="button button-quiet button-large" onClick={() => playDemo(games[0])} type="button">
@@ -409,6 +736,9 @@ function App() {
             </div>
 
             <div className="hero-art-wrap">
+              <div aria-hidden="true" className="hero-float hero-float-controller"><Icon name="controller" size={32} /></div>
+              <div aria-hidden="true" className="hero-float hero-float-sparkle"><Icon name="sparkles" size={25} /></div>
+              <div aria-hidden="true" className="hero-float hero-float-pixel" />
               <div className="hero-art-backdrop" />
               <div className="hero-art" id="hero-art">
                 <div className="hero-art-frame">
@@ -443,16 +773,16 @@ function App() {
 
         <section aria-label="GameVerse at a glance" className="stats-strip">
           <div className="page-width stats-grid">
-            <div className="stat-item"><strong>250<span>+</span></strong><small>free games</small></div>
-            <div className="stat-item"><strong>50<span>K</span></strong><small>happy players</small></div>
-            <div className="stat-item"><strong>15<span>+</span></strong><small>game genres</small></div>
-            <div className="stat-item"><strong>100<span>%</span></strong><small>free entertainment</small></div>
+            <div className="stat-item"><strong><CountUp value={250} /><span>+</span></strong><small>free games</small></div>
+            <div className="stat-item"><strong><CountUp value={50} /><span>K</span></strong><small>happy players</small></div>
+            <div className="stat-item"><strong><CountUp value={15} /><span>+</span></strong><small>game genres</small></div>
+            <div className="stat-item"><strong><CountUp value={100} /><span>%</span></strong><small>free entertainment</small></div>
           </div>
         </section>
 
         <section aria-labelledby="games-title" className="section games-section" id="games">
           <div className="page-width">
-            <div className="section-heading games-heading">
+            <div className="section-heading games-heading" data-reveal>
               <div>
                 <span className="section-kicker">THE PLAYGROUND</span>
                 <h2 id="games-title">Discover your next favorite game<span>.</span></h2>
@@ -476,6 +806,7 @@ function App() {
             </div>
 
             <div aria-label="Filter games by category" className="filter-row">
+              <span aria-hidden="true" className="filter-indicator" />
               {['All games', ...categories.map((category) => category.name)].map((category) => (
                 <button
                   aria-pressed={activeCategory === category}
@@ -494,8 +825,15 @@ function App() {
 
             {visibleGames.length > 0 ? (
               <div className="game-grid">
-                {visibleGames.map((game) => (
-                  <article className="game-card" key={game.id}>
+                {visibleGames.map((game, index) => (
+                  <article
+                    className="game-card"
+                    data-reveal
+                    key={game.id}
+                    onPointerLeave={resetCardTilt}
+                    onPointerMove={tiltCard}
+                    style={{ '--reveal-order': index }}
+                  >
                     <button
                       aria-label={favorites.includes(game.id) ? `Remove ${game.title} from favorites` : `Add ${game.title} to favorites`}
                       aria-pressed={favorites.includes(game.id)}
@@ -506,7 +844,19 @@ function App() {
                       <Icon name="heart" size={17} />
                     </button>
                     <button className={`game-cover tone-${game.tone}`} onClick={() => playDemo(game)} type="button">
-                      <img alt={game.imageAlt} loading="lazy" src={imageUrl(game.image, 700)} />
+                      <img
+                        alt={game.imageAlt}
+                        loading="lazy"
+                        onError={(event) => {
+                          event.currentTarget.classList.add('is-error')
+                          event.currentTarget.closest('.game-cover')?.classList.add('image-error')
+                        }}
+                        onLoad={(event) => {
+                          event.currentTarget.classList.add('is-loaded')
+                          event.currentTarget.closest('.game-cover')?.classList.add('image-ready')
+                        }}
+                        src={imageUrl(game.image, 700)}
+                      />
                       <span className="cover-overlay" />
                       <span className="game-badge">{game.badge}</span>
                       <span className="cover-play"><Icon name="play" size={18} /> Preview</span>
@@ -552,18 +902,20 @@ function App() {
 
         <section aria-labelledby="categories-title" className="section categories-section" id="categories">
           <div className="page-width">
-            <div className="section-heading centered-heading">
+            <div className="section-heading centered-heading" data-reveal>
               <span className="section-kicker">A WORLD OF WAYS TO PLAY</span>
               <h2 id="categories-title">Explore games by <span>category.</span></h2>
               <p>From quick little puzzles to all-out adventures, there&apos;s a mood for that.</p>
             </div>
             <div className="category-grid">
-              {categories.map((category) => (
+              {categories.map((category, index) => (
                 <button
                   aria-label={`Browse ${category.name} games`}
                   className="category-card"
+                  data-reveal
                   key={category.name}
                   onClick={() => chooseCategory(category.name)}
+                  style={{ '--reveal-order': index }}
                   type="button"
                 >
                   <span className={`category-icon category-${category.color}`}><Icon name={category.icon} size={22} /></span>
@@ -577,7 +929,7 @@ function App() {
 
         <section aria-labelledby="about-title" className="section benefits-section" id="about">
           <div className="page-width benefits-layout">
-            <div className="benefits-intro">
+            <div className="benefits-intro" data-reveal>
               <span className="section-kicker">WHY CHOOSE GAMEVERSE</span>
               <h2 id="about-title">All the fun.<br /><span>None of the fuss.</span></h2>
               <p>We think great games should be easy to find, easy to play, and always a joy to come back to.</p>
@@ -587,7 +939,12 @@ function App() {
             </div>
             <div className="benefit-grid">
               {benefits.map((benefit, index) => (
-                <article className="benefit-card" key={benefit.title}>
+                <article
+                  className="benefit-card"
+                  data-reveal
+                  key={benefit.title}
+                  style={{ '--reveal-order': index }}
+                >
                   <span className={`benefit-icon benefit-icon-${index}`}><Icon name={benefit.icon} size={20} /></span>
                   <h3>{benefit.title}</h3>
                   <p>{benefit.description}</p>
@@ -599,7 +956,7 @@ function App() {
 
         <section aria-labelledby="trending-title" className="section trending-section" id="trending">
           <div className="page-width">
-            <div className="section-heading trending-heading">
+            <div className="section-heading trending-heading" data-reveal>
               <div>
                 <span className="section-kicker">GOOD GAMES, GREAT BUZZ</span>
                 <h2 id="trending-title">On everyone&apos;s <span>playlist.</span></h2>
@@ -608,7 +965,7 @@ function App() {
               <span className="live-tag"><span /> TRENDING NOW</span>
             </div>
             <div className="trending-grid">
-              <article className="trending-feature">
+              <article className="trending-feature" data-reveal>
                 <img alt="A galaxy of stars stretching into deep space" loading="lazy" src={imageUrl('photo-1462331940025-496dfbfc7564', 1000)} />
                 <div className="trending-feature-shade" />
                 <span className="trending-label"><Icon name="bolt" size={13} /> MOST PLAYED</span>
@@ -626,7 +983,7 @@ function App() {
                 </div>
               </article>
               <div className="trending-side">
-                <article className="trending-mini-card mini-wine">
+                <article className="trending-mini-card mini-wine" data-reveal style={{ '--reveal-order': 1 }}>
                   <div className="mini-art">
                     <img alt="A striking mountain landscape" loading="lazy" src={imageUrl('photo-1464822759023-fed622ff2c3b', 500)} />
                     <span className="mini-game-icon"><Icon name="compass" size={22} /></span>
@@ -640,7 +997,7 @@ function App() {
                     </button>
                   </div>
                 </article>
-                <article className="trending-mini-card mini-green">
+                <article className="trending-mini-card mini-green" data-reveal style={{ '--reveal-order': 2 }}>
                   <div className="mini-art">
                     <img alt="Warm glowing abstract lights" loading="lazy" src={imageUrl('photo-1519608487953-e999c86e7455', 500)} />
                     <span className="mini-game-icon"><Icon name="bolt" size={22} /></span>
@@ -662,7 +1019,7 @@ function App() {
         <section aria-labelledby="community-title" className="community-section">
           <div aria-hidden="true" className="community-orbit community-orbit-one" />
           <div aria-hidden="true" className="community-orbit community-orbit-two" />
-          <div className="page-width community-content">
+          <div className="page-width community-content" data-reveal>
             <span className="community-icon"><Icon name="sparkles" size={22} /></span>
             <span className="section-kicker">YOUR NEXT GREAT BREAK</span>
             <h2 id="community-title">Ready to level up <span>your fun?</span></h2>
@@ -723,6 +1080,16 @@ function App() {
           </div>
         </div>
       </footer>
+
+      <button
+        aria-label="Back to top"
+        className={`back-to-top${hasScrolled ? ' is-visible' : ''}`}
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        tabIndex={hasScrolled ? 0 : -1}
+        type="button"
+      >
+        <Icon name="arrow" size={18} />
+      </button>
 
       {(selectedGame || authMode) && (
         <div
